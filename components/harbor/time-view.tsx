@@ -88,7 +88,9 @@ export function TimeView({ now, onOpenIssue }: { now: number; onOpenIssue: (id: 
                             </span>
                             {issue?.title ?? "Issue deleted"}
                           </p>
-                          {entry.note ? <p className="truncate text-xs text-muted-foreground">{entry.note}</p> : null}
+                          <p className="truncate text-xs text-muted-foreground">
+                            {[entry.userName, entry.note].filter(Boolean).join(" · ")}
+                          </p>
                         </button>
                         <span className="font-mono text-sm">{formatDuration(entryDuration(entry, now))}</span>
                         {entry.endedAt !== null ? (

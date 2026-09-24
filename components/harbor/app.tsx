@@ -20,12 +20,14 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { AuthScreen } from "@/components/harbor/auth-screen"
 import { BoardView } from "@/components/harbor/board-view"
 import { CausesView } from "@/components/harbor/causes-view"
 import { IssueDetail } from "@/components/harbor/issue-detail"
 import { IssueList, QUICK_FILTERS, SORTS, filterIssues, sortIssues, type QuickFilter, type SortKey } from "@/components/harbor/issues-view"
 import { NotesView } from "@/components/harbor/notes-view"
 import { PomodoroView } from "@/components/harbor/pomodoro-view"
+import { TeamBar } from "@/components/harbor/team-bar"
 import { TimeView } from "@/components/harbor/time-view"
 import { useStore } from "@/lib/store"
 import { dayKey, formatClock, formatDuration, startOfDay } from "@/lib/format"
@@ -121,6 +123,8 @@ export function App() {
       </div>
     )
   }
+
+  if (!store.user) return <AuthScreen />
 
   const sidebar = (
     <Sidebar
@@ -340,8 +344,9 @@ function Sidebar({
     <div className="flex h-full flex-col">
       <div className="px-4 pt-5 pb-4">
         <p className="text-lg font-medium tracking-tight">Harbor</p>
-        <p className="text-xs text-muted-foreground">Issues, causes, notes, and hours.</p>
+        <p className="text-xs text-muted-foreground">Shared work for your team.</p>
       </div>
+      <TeamBar />
       <nav className="flex flex-col gap-0.5 px-2">
         {items.map((item) => {
           const Icon = item.icon

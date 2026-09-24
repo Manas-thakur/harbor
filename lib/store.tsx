@@ -3,16 +3,32 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useSyncExternalStore,
   type ReactNode,
 } from "react"
 import { blankBlocks, isDescendant, renameLinks } from "@/lib/notes"
-import { createSample, sampleNotes } from "@/lib/sample"
+import { createSample } from "@/lib/sample"
 import { defaultPomodoro, phaseLength, type Block, type Issue, type Note, type PomodoroPhase, type PomodoroState, type Priority, type IssueStatus, type IssueType, type StoreData, type TimeEntry } from "@/lib/types"
 import { dayKey } from "@/lib/format"
 import { isStoreData } from "@/lib/validate"
 
-const STORAGE_KEY = "harbor.v1"
+const LEGACY_KEY = "harbor.v1"
+
+export type AccountUser = { id: string; name: string; email: string }
+export type TeamSummary = { id: string; name: string; role: "owner" | "member" }
+export type Member = { id: string; name: string; email: string; role: "owner" | "member" }
+
+type Snapshot = {
+  ready: boolean
+  user: AccountUser | null
+  teams: TeamSummary[]
+  teamId: string | null
+  teamName: string | null
+  members: Member[]
+  revision: number
+  data: StoreData
+}
 
 type NewIssue = {
   title: string
@@ -25,7 +41,20 @@ type NewIssue = {
 
 type StoreContextValue = {
   ready: boolean
+  user: AccountUser | null
+  teams: TeamSummary[]
+  teamId: string | null
+  teamName: string | null
+  members: Member[]
   data: StoreData
+  login: (email: string, password: string) => Promise<string | null>
+  signup: (name: string, email: string, password: string) => Promise<string | null>
+  logout: () => Promise<void>
+  createTeam: (name: string) => Promise<string | null>
+  joinTeam: (code: string) => Promise<string | null>
+  switchTeam: (teamId: string) => Promise<void>
+  inviteToTeam: () => Promise<string | null>
+  removeMember: (memberId: string) => Promise<string | null>
   createIssue: (input: NewIssue) => string
   updateIssue: (id: string, patch: Partial<Issue>) => void
   deleteIssue: (id: string) => void
@@ -50,42 +79,140 @@ type StoreContextValue = {
 }
 
 const emptyData = (): StoreData => ({ issues: [], entries: [], notes: [], pomodoro: defaultPomodoro(), nextNumber: 1 })
-const serverData = emptyData()
 
-let current: StoreData | null = null
+const initialSnapshot: Snapshot = {
+  ready: false,
+  user: null,
+  teams: [],
+  teamId: null,
+  teamName: null,
+  members: [],
+  revision: 0,
+  data: emptyData(),
+}
+
+let snapshot: Snapshot = initialSnapshot
+let dirty = false
+let saving = false
+let saveQueued = false
 const listeners = new Set<() => void>()
 
-function load(): StoreData | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const parsed: unknown = JSON.parse(raw)
-    return isStoreData(parsed) ? parsed : null
-  } catch {
-    return null
+function readClient() {
+  return snapshot.data
+}
+
+function emit() {
+  listeners.forEach((listener) => listener())
+}
+
+function commit(next: StoreData) {
+  snapshot = { ...snapshot, data: next }
+  dirty = true
+  emit()
+  scheduleSave()
+}
+
+let saveTimer = 0
+
+function scheduleSave() {
+  window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => void flushSave(), 200)
+}
+
+async function flushSave() {
+  if (!snapshot.user || saving) {
+    if (snapshot.user) saveQueued = true
+    return
+  }
+  saving = true
+  const revision = snapshot.revision
+  const data = snapshot.data
+  const sent = JSON.stringify(data)
+  const response = await fetch("/api/workspace", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ revision, data }),
+  })
+  saving = false
+  if (response.status === 409) {
+    dirty = false
+    await refreshWorkspace()
+    return
+  }
+  if (response.ok) {
+    const body = (await response.json()) as { revision: number }
+    if (snapshot.revision === revision) {
+      snapshot = { ...snapshot, revision: body.revision }
+      dirty = JSON.stringify(snapshot.data) !== sent
+      emit()
+      if (dirty) saveQueued = true
+    }
+  }
+  if (saveQueued) {
+    saveQueued = false
+    void flushSave()
+  }
+}
+
+type RemotePayload = {
+  user: AccountUser | null
+  teams?: TeamSummary[]
+  teamId?: string | null
+  teamName?: string | null
+  members?: Member[]
+  revision?: number
+  data?: StoreData | null
+}
+
+function applyRemote(payload: RemotePayload) {
+  if (!payload.user) {
+    snapshot = { ...initialSnapshot, ready: true }
+    return
+  }
+  const data = payload.data ? withNotes(payload.data) : emptyData()
+  snapshot = {
+    ready: true,
+    user: payload.user,
+    teams: payload.teams ?? [],
+    teamId: payload.teamId ?? null,
+    teamName: payload.teamName ?? null,
+    members: payload.members ?? [],
+    revision: payload.revision ?? 0,
+    data,
   }
 }
 
 function withNotes(data: StoreData): StoreData {
-  const notes = Array.isArray(data.notes) ? data.notes : sampleNotes()
-  const pomodoro = data.pomodoro?.settings ? data.pomodoro : defaultPomodoro()
-  return { ...data, notes, pomodoro }
+  return {
+    issues: data.issues ?? [],
+    entries: data.entries ?? [],
+    notes: Array.isArray(data.notes) ? data.notes : [],
+    pomodoro: data.pomodoro?.settings ? data.pomodoro : defaultPomodoro(),
+    nextNumber: data.nextNumber || 1,
+  }
 }
 
-function readClient() {
-  if (current) return current
-  const stored = load()
-  const next = withNotes(stored ?? createSample())
-  current = next
-  const needsSave = !stored || !Array.isArray(stored.notes) || !stored.pomodoro?.settings
-  if (needsSave) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  return current
+async function refreshWorkspace() {
+  const response = await fetch("/api/session")
+  if (!response.ok) return
+  const payload = (await response.json()) as RemotePayload
+  if (dirty) return
+  applyRemote(payload)
+  emit()
 }
 
-function commit(next: StoreData) {
-  current = next
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  listeners.forEach((listener) => listener())
+function importLegacy() {
+  if (snapshot.data.issues.length > 0 || snapshot.data.notes.length > 0) return
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY)
+    if (!raw) return
+    const parsed: unknown = JSON.parse(raw)
+    if (!isStoreData(parsed)) return
+    commit(withNotes(parsed))
+    localStorage.removeItem(LEGACY_KEY)
+  } catch {
+    return
+  }
 }
 
 function subscribe(listener: () => void) {
@@ -96,8 +223,27 @@ function subscribe(listener: () => void) {
 const StoreContext = createContext<StoreContextValue | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const data = useSyncExternalStore(subscribe, readClient, () => serverData)
-  const ready = useSyncExternalStore(subscribe, () => true, () => false)
+  const state = useSyncExternalStore(subscribe, () => snapshot, () => initialSnapshot)
+
+  useEffect(() => {
+    let stop = false
+    async function boot() {
+      const response = await fetch("/api/session")
+      if (stop) return
+      const payload = (await response.json()) as RemotePayload
+      applyRemote(payload)
+      if (payload.user) importLegacy()
+      emit()
+    }
+    void boot()
+    const poll = window.setInterval(() => {
+      if (snapshot.user && !dirty) void refreshWorkspace()
+    }, 4000)
+    return () => {
+      stop = true
+      window.clearInterval(poll)
+    }
+  }, [])
 
   function mutate(recipe: (prev: StoreData) => StoreData) {
     commit(recipe(readClient()))
@@ -171,6 +317,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           startedAt: now,
           endedAt: null,
           note: "",
+          userName: snapshot.user?.name,
         },
       ],
       issues: prev.issues.map((issue) =>
@@ -190,7 +337,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   function addEntry(entry: Omit<TimeEntry, "id">) {
     mutate((prev) => ({
       ...prev,
-      entries: [...prev.entries, { ...entry, id: crypto.randomUUID() }],
+      entries: [...prev.entries, { ...entry, id: crypto.randomUUID(), userName: entry.userName ?? snapshot.user?.name }],
     }))
   }
 
@@ -381,11 +528,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  async function login(email: string, password: string) {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!response.ok) {
+      const body = (await response.json()) as { error?: string }
+      return body.error ?? "Could not log in."
+    }
+    await refreshWorkspace()
+    importLegacy()
+    return null
+  }
+
+  async function signup(name: string, email: string, password: string) {
+    const response = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    })
+    if (!response.ok) {
+      const body = (await response.json()) as { error?: string }
+      return body.error ?? "Could not create the account."
+    }
+    await refreshWorkspace()
+    importLegacy()
+    return null
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" })
+    dirty = false
+    snapshot = { ...initialSnapshot, ready: true }
+    emit()
+  }
+
+  async function teamAction(body: Record<string, string>) {
+    const response = await fetch("/api/teams", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    const payload = (await response.json()) as { error?: string; code?: string }
+    if (!response.ok) return { error: payload.error ?? "That did not work.", code: null }
+    dirty = false
+    await refreshWorkspace()
+    return { error: null, code: payload.code ?? null }
+  }
+
+  async function createTeam(name: string) {
+    return (await teamAction({ action: "create", name })).error
+  }
+
+  async function joinTeam(code: string) {
+    return (await teamAction({ action: "join", code })).error
+  }
+
+  async function switchTeam(teamId: string) {
+    dirty = false
+    await teamAction({ action: "switch", teamId })
+  }
+
+  async function inviteToTeam() {
+    if (!snapshot.teamId) return null
+    return (await teamAction({ action: "invite", teamId: snapshot.teamId })).code
+  }
+
+  async function removeMember(memberId: string) {
+    if (!snapshot.teamId) return "No team."
+    return (await teamAction({ action: "remove", teamId: snapshot.teamId, memberId })).error
+  }
+
   return (
     <StoreContext.Provider
       value={{
-        ready,
-        data,
+        ready: state.ready,
+        user: state.user,
+        teams: state.teams,
+        teamId: state.teamId,
+        teamName: state.teamName,
+        members: state.members,
+        data: state.data,
         createIssue,
         updateIssue,
         deleteIssue,
@@ -407,6 +632,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         skipPomodoro,
         completePomodoro,
         setPomodoro,
+        login,
+        signup,
+        logout,
+        createTeam,
+        joinTeam,
+        switchTeam,
+        inviteToTeam,
+        removeMember,
       }}
     >
       {children}

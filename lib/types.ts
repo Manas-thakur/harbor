@@ -22,6 +22,7 @@ export type TimeEntry = {
   startedAt: number
   endedAt: number | null
   note: string
+  userName?: string
 }
 
 export type BlockType =
