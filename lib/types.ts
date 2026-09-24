@@ -24,9 +24,47 @@ export type TimeEntry = {
   note: string
 }
 
+export type BlockType =
+  | "paragraph"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "bullet"
+  | "number"
+  | "todo"
+  | "quote"
+  | "callout"
+  | "code"
+  | "divider"
+  | "toggle"
+
+export type Block = {
+  id: string
+  type: BlockType
+  text: string
+  checked: boolean
+  collapsed: boolean
+}
+
+export type Note = {
+  id: string
+  title: string
+  icon: string
+  parentId: string | null
+  blocks: Block[]
+  tags: string[]
+  pinned: boolean
+  issueId: string | null
+  dailyDate: string | null
+  sort: number
+  createdAt: number
+  updatedAt: number
+}
+
 export type StoreData = {
   issues: Issue[]
   entries: TimeEntry[]
+  notes: Note[]
   nextNumber: number
 }
 

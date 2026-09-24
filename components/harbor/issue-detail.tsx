@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { FieldSelect, PriorityMark, StatusIcon, TypeIcon, priorityLabel, typeLabel } from "@/components/harbor/ui-bits"
 import { formatDuration, formatWhen } from "@/lib/format"
+import { investigationBlocks } from "@/lib/notes"
 import { useStore } from "@/lib/store"
 import { PRIORITIES, STATUSES, TYPES, entryDuration, issueKey, loggedMs, type Issue } from "@/lib/types"
 
@@ -15,12 +16,14 @@ export function IssueDetail({
   issue,
   now,
   onClose,
+  onOpenNote,
 }: {
   issue: Issue
   now: number
   onClose: () => void
+  onOpenNote: (id: string) => void
 }) {
-  const { data, updateIssue, deleteIssue, startTimer, stopTimer, deleteEntry } = useStore()
+  const { data, updateIssue, deleteIssue, startTimer, stopTimer, deleteEntry, createNote } = useStore()
   const [draft, setDraft] = useState({
     id: issue.id,
     title: issue.title,
@@ -150,6 +153,45 @@ export function IssueDetail({
             className="min-h-28"
           />
         </label>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Pages</p>
+            <button
+              className="text-xs text-amber-200"
+              onClick={() => {
+                const id = createNote({
+                  title: issue.title,
+                  icon: issue.type === "bug" ? "🐛" : "📝",
+                  issueId: issue.id,
+                  tags: [issue.type],
+                  blocks: investigationBlocks(issue),
+                })
+                onOpenNote(id)
+              }}
+            >
+              Write a page
+            </button>
+          </div>
+          {data.notes.filter((note) => note.issueId === issue.id || note.blocks.some((block) => block.text.includes(`[[${issueKey(issue.number)}]]`))).length === 0 ? (
+            <p className="rounded-lg border border-dashed px-3 py-3 text-sm text-muted-foreground">
+              No page is linked to this issue yet.
+            </p>
+          ) : (
+            <ul className="overflow-hidden rounded-lg border">
+              {data.notes
+                .filter((note) => note.issueId === issue.id || note.blocks.some((block) => block.text.includes(`[[${issueKey(issue.number)}]]`)))
+                .map((note) => (
+                  <li key={note.id}>
+                    <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => onOpenNote(note.id)}>
+                      <span>{note.icon}</span>
+                      <span className="truncate">{note.title}</span>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
 
         <div>
           <div className="mb-2 flex items-center justify-between">

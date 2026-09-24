@@ -23,9 +23,11 @@ Open [http://127.0.0.1:3847](http://127.0.0.1:3847).
 
 - File bugs, tasks, and improvements
 - Write a cause on a bug, then see which causes repeat
+- Keep nested notes with to-dos, slash commands, `[[links]]`, backlinks, a daily page, and a table of every page
+- Link a note to an issue, or mention the issue from the page
 - Start a timer on an issue, or log time you already spent
 - Move work across Backlog, To do, In progress, and Done
-- Export and import the workspace as JSON
+- Export and import the workspace as JSON, or export a single page as Markdown
 
 The first visit loads a sample workspace so the time and causes views are not empty. Clear it from the sidebar when you want a blank slate.
 

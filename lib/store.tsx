@@ -6,8 +6,10 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react"
-import { createSample } from "@/lib/sample"
-import type { Issue, Priority, IssueStatus, IssueType, StoreData, TimeEntry } from "@/lib/types"
+import { blankBlocks, isDescendant, renameLinks } from "@/lib/notes"
+import { createSample, sampleNotes } from "@/lib/sample"
+import type { Block, Issue, Note, Priority, IssueStatus, IssueType, StoreData, TimeEntry } from "@/lib/types"
+import { dayKey } from "@/lib/format"
 import { isStoreData } from "@/lib/validate"
 
 const STORAGE_KEY = "harbor.v1"
@@ -34,9 +36,14 @@ type StoreContextValue = {
   replaceData: (next: StoreData) => void
   loadSample: () => void
   clearAll: () => void
+  createNote: (input: Partial<Note> & { title: string }) => string
+  updateNote: (id: string, patch: Partial<Note>) => void
+  deleteNote: (id: string) => void
+  moveNote: (id: string, parentId: string | null) => void
+  ensureDailyNote: () => string
 }
 
-const emptyData = (): StoreData => ({ issues: [], entries: [], nextNumber: 1 })
+const emptyData = (): StoreData => ({ issues: [], entries: [], notes: [], nextNumber: 1 })
 const serverData = emptyData()
 
 let current: StoreData | null = null
@@ -53,11 +60,17 @@ function load(): StoreData | null {
   }
 }
 
+function withNotes(data: StoreData): StoreData {
+  if (Array.isArray(data.notes)) return data
+  return { ...data, notes: sampleNotes() }
+}
+
 function readClient() {
   if (current) return current
   const stored = load()
-  current = stored ?? createSample()
-  if (!stored) localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
+  const next = withNotes(stored ?? createSample())
+  current = next
+  if (!stored || !Array.isArray(stored.notes)) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   return current
 }
 
@@ -134,6 +147,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...prev,
       issues: prev.issues.filter((issue) => issue.id !== id),
       entries: prev.entries.filter((entry) => entry.issueId !== id),
+      notes: prev.notes.map((note) => (note.issueId === id ? { ...note, issueId: null } : note)),
     }))
   }
 
@@ -191,6 +205,86 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     commit(emptyData())
   }
 
+  function createNote(input: Partial<Note> & { title: string }) {
+    const id = crypto.randomUUID()
+    const now = Date.now()
+    mutate((prev) => {
+      const siblings = prev.notes.filter((note) => note.parentId === (input.parentId ?? null))
+      const note: Note = {
+        id,
+        title: input.title.trim() || "Untitled",
+        icon: input.icon ?? "📝",
+        parentId: input.parentId ?? null,
+        blocks: input.blocks?.length ? input.blocks : blankBlocks(),
+        tags: input.tags ?? [],
+        pinned: input.pinned ?? false,
+        issueId: input.issueId ?? null,
+        dailyDate: input.dailyDate ?? null,
+        sort: siblings.length,
+        createdAt: now,
+        updatedAt: now,
+      }
+      return { ...prev, notes: [note, ...prev.notes] }
+    })
+    return id
+  }
+
+  function updateNote(id: string, patch: Partial<Note>) {
+    const now = Date.now()
+    mutate((prev) => {
+      const currentNote = prev.notes.find((note) => note.id === id)
+      let notes = prev.notes
+      if (currentNote && patch.title && patch.title !== currentNote.title) {
+        notes = renameLinks(notes, currentNote.title, patch.title)
+      }
+      return {
+        ...prev,
+        notes: notes.map((note) => (note.id === id ? { ...note, ...patch, id: note.id, createdAt: note.createdAt, updatedAt: now } : note)),
+      }
+    })
+  }
+
+  function deleteNote(id: string) {
+    mutate((prev) => {
+      const target = prev.notes.find((note) => note.id === id)
+      return {
+        ...prev,
+        notes: prev.notes
+          .filter((note) => note.id !== id)
+          .map((note) => (note.parentId === id ? { ...note, parentId: target?.parentId ?? null } : note)),
+      }
+    })
+  }
+
+  function moveNote(id: string, parentId: string | null) {
+    mutate((prev) => {
+      if (parentId && (parentId === id || isDescendant(prev.notes, id, parentId))) return prev
+      return {
+        ...prev,
+        notes: prev.notes.map((note) => (note.id === id ? { ...note, parentId, updatedAt: Date.now() } : note)),
+      }
+    })
+  }
+
+  function ensureDailyNote() {
+    const date = dayKey(Date.now())
+    const existing = readClient().notes.find((note) => note.dailyDate === date)
+    if (existing) return existing.id
+    const label = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
+    return createNote({
+      title: label,
+      icon: "🗓️",
+      dailyDate: date,
+      tags: ["daily"],
+      blocks: [
+        { id: crypto.randomUUID(), type: "h2", text: "Plan", checked: false, collapsed: false },
+        { id: crypto.randomUUID(), type: "todo", text: "", checked: false, collapsed: false },
+        { id: crypto.randomUUID(), type: "h2", text: "Notes", checked: false, collapsed: false },
+        { id: crypto.randomUUID(), type: "paragraph", text: "", checked: false, collapsed: false },
+      ] satisfies Block[],
+    })
+  }
+
   return (
     <StoreContext.Provider
       value={{
@@ -206,6 +300,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         replaceData,
         loadSample,
         clearAll,
+        createNote,
+        updateNote,
+        deleteNote,
+        moveNote,
+        ensureDailyNote,
       }}
     >
       {children}

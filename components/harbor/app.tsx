@@ -5,6 +5,7 @@ import {
   Clock3,
   Download,
   GitBranch,
+  BookOpen,
   LayoutGrid,
   List,
   Menu,
@@ -22,18 +23,20 @@ import { BoardView } from "@/components/harbor/board-view"
 import { CausesView } from "@/components/harbor/causes-view"
 import { IssueDetail } from "@/components/harbor/issue-detail"
 import { IssueList, QUICK_FILTERS, SORTS, filterIssues, sortIssues, type QuickFilter, type SortKey } from "@/components/harbor/issues-view"
+import { NotesView } from "@/components/harbor/notes-view"
 import { TimeView } from "@/components/harbor/time-view"
 import { useStore } from "@/lib/store"
 import { dayKey, formatClock, formatDuration, startOfDay } from "@/lib/format"
 import { isStoreData } from "@/lib/validate"
 import { PRIORITIES, TYPES, issueKey, type IssueStatus, type IssueType, type Priority, type StoreData } from "@/lib/types"
 
-type View = "issues" | "board" | "time" | "causes"
+type View = "issues" | "board" | "time" | "causes" | "notes"
 
 export function App() {
   const store = useStore()
   const [view, setView] = useState<View>("issues")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [noteId, setNoteId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [quick, setQuick] = useState<QuickFilter>("open")
   const [sort, setSort] = useState<SortKey>("updated")
@@ -97,7 +100,7 @@ export function App() {
 
   function openIssue(id: string) {
     setSelectedId(id)
-    if (view === "time" || view === "causes") setView("issues")
+    if (view === "time" || view === "causes" || view === "notes") setView("issues")
   }
 
   const todayMs = store.data.entries.reduce((sum, entry) => {
@@ -225,10 +228,18 @@ export function App() {
             {view === "causes" ? (
               <CausesView issues={store.data.issues} entries={store.data.entries} now={now} onOpenIssue={openIssue} />
             ) : null}
+            {view === "notes" ? (
+              <NotesView
+                query={query}
+                selectedId={noteId}
+                onSelect={setNoteId}
+                onOpenIssue={openIssue}
+              />
+            ) : null}
           </div>
           {desktop && selected && (view === "issues" || view === "board") ? (
             <aside className="hidden w-[420px] shrink-0 border-l lg:block">
-              <IssueDetail issue={selected} now={now} onClose={() => setSelectedId(null)} />
+              <IssueDetail issue={selected} now={now} onClose={() => setSelectedId(null)} onOpenNote={(id) => { setNoteId(id); setView("notes") }} />
             </aside>
           ) : null}
         </div>
@@ -236,7 +247,7 @@ export function App() {
 
       {!desktop && selected ? (
         <div className="fixed inset-0 z-40 bg-background">
-          <IssueDetail issue={selected} now={now} onClose={() => setSelectedId(null)} />
+          <IssueDetail issue={selected} now={now} onClose={() => setSelectedId(null)} onOpenNote={(id) => { setNoteId(id); setView("notes"); setSelectedId(null) }} />
         </div>
       ) : null}
 
@@ -262,7 +273,7 @@ export function App() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Clear this workspace?</DialogTitle>
-            <DialogDescription>Issues and time logs in this browser will be removed. Export first if you want a copy.</DialogDescription>
+            <DialogDescription>Issues, notes, and time logs in this browser will be removed. Export first if you want a copy.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmClear(false)}>Cancel</Button>
@@ -310,12 +321,13 @@ function Sidebar({
     { id: "board", label: "Board", icon: LayoutGrid },
     { id: "time", label: "Time", icon: Clock3 },
     { id: "causes", label: "Causes", icon: GitBranch, hint: uncaused ? String(uncaused) : undefined },
+    { id: "notes", label: "Notes", icon: BookOpen },
   ]
   return (
     <div className="flex h-full flex-col">
       <div className="px-4 pt-5 pb-4">
         <p className="text-lg font-medium tracking-tight">Harbor</p>
-        <p className="text-xs text-muted-foreground">Your issues, causes, and hours.</p>
+        <p className="text-xs text-muted-foreground">Issues, causes, notes, and hours.</p>
       </div>
       <nav className="flex flex-col gap-0.5 px-2">
         {items.map((item) => {

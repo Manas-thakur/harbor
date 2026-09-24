@@ -1,4 +1,5 @@
-import type { Issue, StoreData, TimeEntry } from "@/lib/types"
+import type { Issue, Note, StoreData, TimeEntry } from "@/lib/types"
+import { dayKey } from "@/lib/format"
 
 function at(daysAgo: number, hour: number, minute: number) {
   const date = new Date()
@@ -167,5 +168,80 @@ export function createSample(): StoreData {
     span(6, 11, 20, 50, "iss-2", "Logged the blank frame"),
   ]
 
-  return { issues, entries, nextNumber: 11 }
+  return { issues, entries, notes: sampleNotes(), nextNumber: 11 }
+}
+
+function block(id: string, type: Note["blocks"][number]["type"], text: string, checked = false): Note["blocks"][number] {
+  return { id, type, text, checked, collapsed: false }
+}
+
+export function sampleNotes(): Note[] {
+  const today = dayKey(Date.now())
+  return [
+    {
+      id: "note-home",
+      title: "Working notes",
+      icon: "🧭",
+      parentId: null,
+      tags: ["harbor"],
+      pinned: true,
+      issueId: null,
+      dailyDate: null,
+      sort: 0,
+      createdAt: at(6, 9, 0),
+      updatedAt: at(0, 9, 0),
+      blocks: [
+        block("b1", "paragraph", "A place for the thinking that does not fit on a ticket. Link a page to an issue, or mention it with [[HBR-1]]."),
+        block("b2", "h2", "Open threads"),
+        block("b3", "bullet", "Session drops are written up in [[Session token]]."),
+        block("b4", "bullet", "Today's page is [[Today]]."),
+        block("b5", "callout", "Pages nest. Backlinks update when you rename a page."),
+      ],
+    },
+    {
+      id: "note-token",
+      title: "Session token",
+      icon: "🐛",
+      parentId: "note-home",
+      tags: ["auth", "bug"],
+      pinned: false,
+      issueId: "iss-1",
+      dailyDate: null,
+      sort: 0,
+      createdAt: at(5, 11, 0),
+      updatedAt: at(0, 10, 20),
+      blocks: [
+        block("b6", "paragraph", "Tied to [[HBR-1]] and the blank login flash on [[HBR-2]]."),
+        block("b7", "h2", "What I saw"),
+        block("b8", "paragraph", "A hard refresh drops the session after the tab has been idle. The first paint is empty, then the redirect."),
+        block("b9", "h2", "Cause"),
+        block("b10", "paragraph", "The token only lives in memory, so a reload has nothing to restore."),
+        block("b11", "h2", "What I tried"),
+        block("b12", "todo", "Keep the token somewhere that survives refresh", true),
+        block("b13", "todo", "Stop the blank frame before the session is known"),
+        block("b14", "code", "session = memory.get('token') // gone after reload"),
+      ],
+    },
+    {
+      id: "note-today",
+      title: "Today",
+      icon: "🗓️",
+      parentId: null,
+      tags: ["daily"],
+      pinned: false,
+      issueId: null,
+      dailyDate: today,
+      sort: 1,
+      createdAt: at(0, 8, 30),
+      updatedAt: at(0, 11, 0),
+      blocks: [
+        block("b15", "h2", "Plan"),
+        block("b16", "todo", "Finish the session-token writeup in [[Session token]]"),
+        block("b17", "todo", "Rename staging env vars"),
+        block("b18", "h2", "Notes"),
+        block("b19", "paragraph", "The double charge is still open. Cause is already on the ticket: missing idempotency key."),
+        block("b20", "quote", "Write the cause when you find it, not at the end of the week."),
+      ],
+    },
+  ]
 }
