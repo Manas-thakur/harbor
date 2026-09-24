@@ -8,7 +8,7 @@ import {
 } from "react"
 import { blankBlocks, isDescendant, renameLinks } from "@/lib/notes"
 import { createSample, sampleNotes } from "@/lib/sample"
-import type { Block, Issue, Note, Priority, IssueStatus, IssueType, StoreData, TimeEntry } from "@/lib/types"
+import { defaultPomodoro, phaseLength, type Block, type Issue, type Note, type PomodoroPhase, type PomodoroState, type Priority, type IssueStatus, type IssueType, type StoreData, type TimeEntry } from "@/lib/types"
 import { dayKey } from "@/lib/format"
 import { isStoreData } from "@/lib/validate"
 
@@ -41,9 +41,15 @@ type StoreContextValue = {
   deleteNote: (id: string) => void
   moveNote: (id: string, parentId: string | null) => void
   ensureDailyNote: () => string
+  startPomodoro: () => void
+  pausePomodoro: () => void
+  resetPomodoro: () => void
+  skipPomodoro: () => void
+  completePomodoro: () => void
+  setPomodoro: (patch: { issueId?: string | null; settings?: Partial<PomodoroState["settings"]> }) => void
 }
 
-const emptyData = (): StoreData => ({ issues: [], entries: [], notes: [], nextNumber: 1 })
+const emptyData = (): StoreData => ({ issues: [], entries: [], notes: [], pomodoro: defaultPomodoro(), nextNumber: 1 })
 const serverData = emptyData()
 
 let current: StoreData | null = null
@@ -61,8 +67,9 @@ function load(): StoreData | null {
 }
 
 function withNotes(data: StoreData): StoreData {
-  if (Array.isArray(data.notes)) return data
-  return { ...data, notes: sampleNotes() }
+  const notes = Array.isArray(data.notes) ? data.notes : sampleNotes()
+  const pomodoro = data.pomodoro?.settings ? data.pomodoro : defaultPomodoro()
+  return { ...data, notes, pomodoro }
 }
 
 function readClient() {
@@ -70,7 +77,8 @@ function readClient() {
   const stored = load()
   const next = withNotes(stored ?? createSample())
   current = next
-  if (!stored || !Array.isArray(stored.notes)) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  const needsSave = !stored || !Array.isArray(stored.notes) || !stored.pomodoro?.settings
+  if (needsSave) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   return current
 }
 
@@ -285,6 +293,94 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  function stopFocusTimer() {
+    const running = readClient().entries.some((entry) => entry.endedAt === null)
+    if (running) stopTimer()
+  }
+
+  function nextPhase(state: PomodoroState): PomodoroState {
+    if (state.phase === "focus") {
+      const completed = state.completedInCycle + 1
+      const long = completed >= state.settings.cycle
+      const phase: PomodoroPhase = long ? "long" : "short"
+      const next = { ...state, phase, completedInCycle: long ? 0 : completed, running: false, endsAt: null }
+      return { ...next, remainingMs: phaseLength(next) }
+    }
+    const next = { ...state, phase: "focus" as const, running: false, endsAt: null }
+    return { ...next, remainingMs: phaseLength(next) }
+  }
+
+  function startPomodoro() {
+    const now = Date.now()
+    const state = readClient().pomodoro
+    if (state.phase === "focus" && state.issueId) startTimer(state.issueId)
+    mutate((prev) => ({
+      ...prev,
+      pomodoro: {
+        ...prev.pomodoro,
+        running: true,
+        endsAt: now + prev.pomodoro.remainingMs,
+      },
+    }))
+  }
+
+  function pausePomodoro() {
+    const now = Date.now()
+    stopFocusTimer()
+    mutate((prev) => {
+      const remaining = prev.pomodoro.endsAt ? Math.max(0, prev.pomodoro.endsAt - now) : prev.pomodoro.remainingMs
+      return { ...prev, pomodoro: { ...prev.pomodoro, running: false, endsAt: null, remainingMs: remaining } }
+    })
+  }
+
+  function resetPomodoro() {
+    stopFocusTimer()
+    mutate((prev) => {
+      const next = { ...prev.pomodoro, phase: "focus" as const, running: false, endsAt: null, completedInCycle: 0 }
+      return { ...prev, pomodoro: { ...next, remainingMs: phaseLength(next) } }
+    })
+  }
+
+  function skipPomodoro() {
+    stopFocusTimer()
+    mutate((prev) => ({ ...prev, pomodoro: nextPhase(prev.pomodoro) }))
+  }
+
+  function completePomodoro() {
+    const now = Date.now()
+    mutate((prev) => {
+      if (!prev.pomodoro.running || !prev.pomodoro.endsAt || prev.pomodoro.endsAt > now) return prev
+      const startedAt = prev.pomodoro.endsAt - phaseLength(prev.pomodoro)
+      const log = {
+        id: crypto.randomUUID(),
+        phase: prev.pomodoro.phase,
+        issueId: prev.pomodoro.issueId,
+        startedAt,
+        endedAt: now,
+      }
+      const advanced = nextPhase(prev.pomodoro)
+      const auto = {
+        ...advanced,
+        running: true,
+        endsAt: now + advanced.remainingMs,
+      }
+      return { ...prev, pomodoro: { ...auto, logs: [log, ...prev.pomodoro.logs].slice(0, 40) } }
+    })
+    const after = readClient().pomodoro
+    if (after.running && after.phase !== "focus") stopFocusTimer()
+    if (after.running && after.phase === "focus" && after.issueId) startTimer(after.issueId)
+  }
+
+  function setPomodoro(patch: { issueId?: string | null; settings?: Partial<PomodoroState["settings"]> }) {
+    mutate((prev) => {
+      const settings = { ...prev.pomodoro.settings, ...patch.settings }
+      const next = { ...prev.pomodoro, ...patch, settings }
+      const untouched = prev.pomodoro.remainingMs === phaseLength(prev.pomodoro)
+      const remainingMs = prev.pomodoro.running || !untouched ? prev.pomodoro.remainingMs : phaseLength(next)
+      return { ...prev, pomodoro: { ...next, remainingMs, endsAt: prev.pomodoro.running ? prev.pomodoro.endsAt : null } }
+    })
+  }
+
   return (
     <StoreContext.Provider
       value={{
@@ -305,6 +401,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         deleteNote,
         moveNote,
         ensureDailyNote,
+        startPomodoro,
+        pausePomodoro,
+        resetPomodoro,
+        skipPomodoro,
+        completePomodoro,
+        setPomodoro,
       }}
     >
       {children}

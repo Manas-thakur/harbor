@@ -12,6 +12,7 @@ import {
   Plus,
   Search,
   Square,
+  Timer,
   Upload,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -24,13 +25,14 @@ import { CausesView } from "@/components/harbor/causes-view"
 import { IssueDetail } from "@/components/harbor/issue-detail"
 import { IssueList, QUICK_FILTERS, SORTS, filterIssues, sortIssues, type QuickFilter, type SortKey } from "@/components/harbor/issues-view"
 import { NotesView } from "@/components/harbor/notes-view"
+import { PomodoroView } from "@/components/harbor/pomodoro-view"
 import { TimeView } from "@/components/harbor/time-view"
 import { useStore } from "@/lib/store"
 import { dayKey, formatClock, formatDuration, startOfDay } from "@/lib/format"
 import { isStoreData } from "@/lib/validate"
 import { PRIORITIES, TYPES, issueKey, type IssueStatus, type IssueType, type Priority, type StoreData } from "@/lib/types"
 
-type View = "issues" | "board" | "time" | "causes" | "notes"
+type View = "issues" | "board" | "time" | "causes" | "notes" | "pomodoro"
 
 export function App() {
   const store = useStore()
@@ -57,10 +59,10 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (!running) return
+    if (!running && !store.data.pomodoro.running) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [running])
+  }, [running, store.data.pomodoro.running])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -179,6 +181,15 @@ export function App() {
               </span>
             </button>
           ) : null}
+          {store.data.pomodoro.running && store.data.pomodoro.endsAt ? (
+            <button
+              className="hidden items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 font-mono text-xs text-primary sm:flex"
+              onClick={() => setView("pomodoro")}
+            >
+              {store.data.pomodoro.phase === "focus" ? "Focus" : "Break"}{" "}
+              {formatMinutes(Math.max(0, store.data.pomodoro.endsAt - now))}
+            </button>
+          ) : null}
           <Button onClick={() => setCreating(true)}>
             <Plus />
             <span className="hidden sm:inline">New issue</span>
@@ -236,6 +247,7 @@ export function App() {
                 onOpenIssue={openIssue}
               />
             ) : null}
+            {view === "pomodoro" ? <PomodoroView /> : null}
           </div>
           {desktop && selected && (view === "issues" || view === "board") ? (
             <aside className="hidden w-[420px] shrink-0 border-l lg:block">
@@ -322,6 +334,7 @@ function Sidebar({
     { id: "time", label: "Time", icon: Clock3 },
     { id: "causes", label: "Causes", icon: GitBranch, hint: uncaused ? String(uncaused) : undefined },
     { id: "notes", label: "Notes", icon: BookOpen },
+    { id: "pomodoro", label: "Pomodoro", icon: Timer },
   ]
   return (
     <div className="flex h-full flex-col">
@@ -493,6 +506,13 @@ function NewIssueDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function formatMinutes(ms: number) {
+  const total = Math.ceil(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 }
 
 function runningTitle(issues: { id: string; number: number; title: string }[], id: string) {

@@ -1,4 +1,4 @@
-import type { Issue, Note, StoreData, TimeEntry } from "@/lib/types"
+import { defaultPomodoro, type Issue, type Note, type StoreData, type TimeEntry } from "@/lib/types"
 import { dayKey } from "@/lib/format"
 
 function at(daysAgo: number, hour: number, minute: number) {
@@ -168,7 +168,7 @@ export function createSample(): StoreData {
     span(6, 11, 20, 50, "iss-2", "Logged the blank frame"),
   ]
 
-  return { issues, entries, notes: sampleNotes(), nextNumber: 11 }
+  return { issues, entries, notes: sampleNotes(), pomodoro: defaultPomodoro(), nextNumber: 11 }
 }
 
 function block(id: string, type: Note["blocks"][number]["type"], text: string, checked = false): Note["blocks"][number] {

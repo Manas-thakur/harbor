@@ -26,6 +26,7 @@ Open [http://127.0.0.1:3847](http://127.0.0.1:3847).
 - Keep nested notes with to-dos, slash commands, `[[links]]`, backlinks, a daily page, and a table of every page
 - Link a note to an issue, or mention the issue from the page
 - Start a timer on an issue, or log time you already spent
+- Run a Pomodoro: focus, short break, long break, with the focus block logged on an issue
 - Move work across Backlog, To do, In progress, and Done
 - Export and import the workspace as JSON, or export a single page as Markdown
 

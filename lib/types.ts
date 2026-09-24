@@ -61,11 +61,59 @@ export type Note = {
   updatedAt: number
 }
 
+export type PomodoroPhase = "focus" | "short" | "long"
+
+export type PomodoroSettings = {
+  focusMinutes: number
+  shortMinutes: number
+  longMinutes: number
+  cycle: number
+}
+
+export type PomodoroLog = {
+  id: string
+  phase: PomodoroPhase
+  issueId: string | null
+  startedAt: number
+  endedAt: number
+}
+
+export type PomodoroState = {
+  settings: PomodoroSettings
+  phase: PomodoroPhase
+  issueId: string | null
+  running: boolean
+  endsAt: number | null
+  remainingMs: number
+  completedInCycle: number
+  logs: PomodoroLog[]
+}
+
 export type StoreData = {
   issues: Issue[]
   entries: TimeEntry[]
   notes: Note[]
+  pomodoro: PomodoroState
   nextNumber: number
+}
+
+export function defaultPomodoro(): PomodoroState {
+  return {
+    settings: { focusMinutes: 25, shortMinutes: 5, longMinutes: 15, cycle: 4 },
+    phase: "focus",
+    issueId: null,
+    running: false,
+    endsAt: null,
+    remainingMs: 25 * 60_000,
+    completedInCycle: 0,
+    logs: [],
+  }
+}
+
+export function phaseLength(state: PomodoroState) {
+  const { settings, phase } = state
+  const minutes = phase === "focus" ? settings.focusMinutes : phase === "short" ? settings.shortMinutes : settings.longMinutes
+  return minutes * 60_000
 }
 
 export const TYPES: { id: IssueType; label: string }[] = [
