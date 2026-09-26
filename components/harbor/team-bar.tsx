@@ -83,7 +83,10 @@ export function TeamBar() {
           }
         }}
       >
-        <Input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="New team name" className="h-8 text-xs" />
+        <div className="flex gap-1">
+          <Input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="New team name" className="h-8 text-xs" />
+          <Button type="submit" size="xs" variant="outline">Create</Button>
+        </div>
       </form>
       <form
         className="mt-1 grid gap-1"
@@ -97,7 +100,10 @@ export function TeamBar() {
           }
         }}
       >
-        <Input value={code} onChange={(event) => setCode(event.target.value)} placeholder="Invite code" className="h-8 text-xs" />
+        <div className="flex gap-1">
+          <Input value={code} onChange={(event) => setCode(event.target.value)} placeholder="Invite code" className="h-8 text-xs" />
+          <Button type="submit" size="xs" variant="outline">Join</Button>
+        </div>
       </form>
     </div>
   )

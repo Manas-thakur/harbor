@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-all.mjs",
+    "services": "node scripts/dev-services.mjs",
+    "web": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
