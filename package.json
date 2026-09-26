@@ -2,6 +2,9 @@
   "name": "harbor",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "node scripts/dev-all.mjs",
     "services": "node scripts/dev-services.mjs",

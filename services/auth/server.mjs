@@ -1,5 +1,7 @@
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto"
 import { promisify } from "node:util"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { listen } from "../lib/http.mjs"
 import { openDb } from "../lib/sqlite.mjs"
 import { ports } from "../lib/defaults.mjs"
@@ -45,7 +47,7 @@ function publicUser(row) {
   return { id: row.id, email: row.email, name: row.name }
 }
 
-listen("auth", ports.auth, async ({ method, url, body }) => {
+export async function handleAuth({ method, url, body }) {
   if (url.pathname === "/health") return { body: { service: "auth", ok: true } }
 
   if (method === "POST" && url.pathname === "/internal/signup") {
@@ -114,4 +116,8 @@ listen("auth", ports.auth, async ({ method, url, body }) => {
   }
 
   return { status: 404, body: { error: "Not found" } }
-})
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  listen("auth", ports.auth, handleAuth)
+}

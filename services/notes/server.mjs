@@ -1,10 +1,12 @@
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { listen } from "../lib/http.mjs"
 import { openDb } from "../lib/sqlite.mjs"
 import { ports } from "../lib/defaults.mjs"
 
 const db = openDb("notes.db", `CREATE TABLE IF NOT EXISTS books (team_id TEXT PRIMARY KEY, notes TEXT NOT NULL);`)
 
-listen("notes", ports.notes, async ({ method, url, body }) => {
+export async function handleNotes({ method, url, body }) {
   if (url.pathname === "/health") return { body: { service: "notes", ok: true } }
   if (method === "POST" && url.pathname === "/internal/read") {
     const row = db.prepare("SELECT notes FROM books WHERE team_id = ?").get(body.teamId)
@@ -18,4 +20,8 @@ listen("notes", ports.notes, async ({ method, url, body }) => {
     return { body: { ok: true } }
   }
   return { status: 404, body: { error: "Not found" } }
-})
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  listen("notes", ports.notes, handleNotes)
+}

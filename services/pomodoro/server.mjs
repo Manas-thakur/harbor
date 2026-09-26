@@ -1,3 +1,5 @@
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { listen } from "../lib/http.mjs"
 import { openDb } from "../lib/sqlite.mjs"
 import { defaultPomodoro, ports } from "../lib/defaults.mjs"
@@ -12,7 +14,7 @@ const db = openDb(
   );`
 )
 
-listen("pomodoro", ports.pomodoro, async ({ method, url, body }) => {
+export async function handlePomodoro({ method, url, body }) {
   if (url.pathname === "/health") return { body: { service: "pomodoro", ok: true } }
   if (method === "POST" && url.pathname === "/internal/read") {
     const row = db.prepare("SELECT state FROM timers WHERE team_id = ? AND user_id = ?").get(body.teamId, body.userId)
@@ -26,4 +28,8 @@ listen("pomodoro", ports.pomodoro, async ({ method, url, body }) => {
     return { body: { ok: true } }
   }
   return { status: 404, body: { error: "Not found" } }
-})
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  listen("pomodoro", ports.pomodoro, handlePomodoro)
+}

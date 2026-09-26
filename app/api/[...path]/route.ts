@@ -5,9 +5,26 @@ export const runtime = "nodejs"
 const GATEWAY = process.env.HARBOR_GATEWAY_URL || "http://127.0.0.1:4100"
 
 async function proxy(request: Request, context: { params: Promise<{ path: string[] }> }) {
-  const { path } = await context.params
+  const { path: parts } = await context.params
   const url = new URL(request.url)
-  const target = `${GATEWAY}/api/${path.join("/")}${url.search}`
+  if (process.env.VERCEL) {
+    process.env.HARBOR_INPROCESS = "1"
+    process.env.HARBOR_DATA_DIR = process.env.HARBOR_DATA_DIR || "/tmp/harbor"
+    const { handle } = await import("@/services/gateway/server.mjs")
+    const bodyText = request.method === "GET" || request.method === "HEAD" ? "" : await request.text()
+    const result = await handle(
+      { method: request.method, headers: { cookie: request.headers.get("cookie") ?? "" } },
+      new URL(`/api/${parts.join("/")}${url.search}`, "http://inprocess"),
+      bodyText ? JSON.parse(bodyText) : {}
+    )
+    const next = new NextResponse(JSON.stringify(result.body ?? {}), {
+      status: result.status ?? 200,
+      headers: { "content-type": "application/json" },
+    })
+    if (result.headers?.["set-cookie"]) next.headers.append("set-cookie", result.headers["set-cookie"])
+    return next
+  }
+  const target = `${GATEWAY}/api/${parts.join("/")}${url.search}`
   const headers = new Headers(request.headers)
   headers.delete("host")
   const response = await fetch(target, {
